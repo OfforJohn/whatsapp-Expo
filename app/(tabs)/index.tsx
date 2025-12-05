@@ -1,98 +1,238 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TextInput, FlatList, Pressable, Modal } from "react-native";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import ChatListItem from "@/components/ChatListItem";
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { GET_INITIAL_CONTACTS_ROUTE, HOST } from "@/utils/ApiRoutes";
+import axios from "axios";
+import React, { useEffect, useState } from "react";
+import { useAuthStore } from "@/components/utils/authStore";
 
-export default function HomeScreen() {
+
+interface ChatItem {
+  id: string;
+  name: string;
+  lastMessage: string;
+  time: string;
+  unread: number;
+  avatar: string;
+}
+
+
+export default function ChatsScreen() {
+  const [chats, setChats] = useState<ChatItem[]>([]);
+
+  const [showMenu, setShowMenu] = useState(false);
+
+
+  const userId = 1; // logged-in user ID (replace when auth is done)
+
+  const logOut = useAuthStore((state) => state.logOut);
+
+
+
+
+
+
+
+
+
+  useEffect(() => {
+    const fetchChats = async () => {
+      try {
+        const { data } = await axios.get(`${GET_INITIAL_CONTACTS_ROUTE}/${userId}`);
+
+   const mappedChats: ChatItem[] = data.users.map((item: any) => ({
+  id: String(item.id),
+  name: item.name,
+  lastMessage: item.message,
+ time: new Date(item.createdAt).toLocaleDateString("en-US", {
+  year: "numeric",
+  month: "short",
+  day: "2-digit",
+}),
+
+  unread: item.totalUnreadMessages,
+  avatar: item.profilePicture && item.profilePicture.startsWith("http")
+    ? item.profilePicture
+    : `https://i.pravatar.cc/150?u=${item.id}`
+}));
+
+
+
+        setChats(mappedChats);
+      } catch (error) {
+        console.log("Error fetching chats:", error);
+      }
+    };
+
+    fetchChats();
+  }, []);
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.headerRow}>
+        <Text style={styles.headerTitle}>Chats</Text>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+        <View style={styles.headerIcons}>
+          <Ionicons name="camera-outline" size={23} color="#fff" style={{ marginRight: 20 }} />
+          <Pressable onPress={() => setShowMenu(true)}>
+            <Ionicons name="ellipsis-vertical" size={23} color="#fff" />
+          </Pressable>
+
+        </View>
+
+
+      </View>
+
+
+      <Modal visible={showMenu} transparent animationType="fade">
+        <Pressable style={styles.modalOverlay} onPress={() => setShowMenu(false)}>
+          <View style={styles.modalBox}>
+            <Pressable
+              style={styles.logoutButton}
+              onPress={async () => {
+                try {
+                  await logOut();
+                  setShowMenu(false);
+                } catch (err) {
+                  console.error("Logout failed", err);
+                }
+              }}
+            >
+              <Text style={styles.logoutText}>Log Out</Text>
+            </Pressable>
+
+
+
+          </View>
+        </Pressable>
+      </Modal>
+
+
+
+      {/* Search */}
+      <View style={styles.searchContainer}>
+        <Ionicons name="search" size={20} color="#777" />
+        <TextInput placeholder="Search..." placeholderTextColor="#777" style={styles.searchInput} />
+      </View>
+
+      {/* Filter Chips */}
+      <View style={styles.chipsRow}>
+        {["All", "Unread", "Favorites", "Groups"].map((chip, i) => (
+          <Pressable key={i} style={[styles.chip, i === 0 && styles.chipActive]}>
+            <Text style={[styles.chipText, i === 0 && styles.chipTextActive]}>{chip}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {/* Chat List */}
+      <FlatList
+        data={chats}
+        renderItem={({ item }) => <ChatListItem chat={item} />}
+        keyExtractor={(item) => item.id}
+      />
+
+      {/* Floating Button */}
+      <Pressable style={styles.fab}>
+        <MaterialCommunityIcons name="message-plus" color="#2b2626ff" size={28} />
+      </Pressable>
+    </View>
   );
+
+
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  container: { flex: 1, backgroundColor: "#0B141A", paddingHorizontal: 10 },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.3)",
+    justifyContent: "flex-start",
+    alignItems: "flex-end",
+    paddingTop: 60,
+    paddingRight: 10,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+
+  modalBox: {
+    backgroundColor: "#1C252C",
+    borderRadius: 8,
+    paddingVertical: 12,
+    width: 160,
+    elevation: 10,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+
+  logoutButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 15,
+  },
+
+  logoutText: {
+    color: "#ff4d4d",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+
+
+  /** HEADER **/
+  headerRow: {
+    marginTop: 45,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: "700",
+    color: "#E9EDF0",
+  },
+  headerIcons: { flexDirection: "row", alignItems: "center" },
+
+  /** SEARCH **/
+  searchContainer: {
+    backgroundColor: "#202C33",
+    borderRadius: 30,
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 15,
+  },
+  searchInput: { marginLeft: 10, color: "#fff", flex: 1 },
+
+  /** FILTERS **/
+  chipsRow: {
+    flexDirection: "row",
+    marginTop: 15,
+  },
+  chip: {
+    paddingHorizontal: 15,
+    paddingVertical: 6,
+    backgroundColor: "#1C252C",
+    borderRadius: 20,
+    marginRight: 10,
+  },
+  chipActive: {
+    backgroundColor: "#005C4B",
+  },
+  chipText: {
+    color: "#B8C4CC",
+    fontSize: 14,
+  },
+  chipTextActive: {
+    color: "#fff",
+    fontWeight: "600",
+  },
+
+  /** FAB **/
+  fab: {
+    position: "absolute",
+    bottom: 25,
+    right: 20,
+    backgroundColor: "#00A884",
+    padding: 18,
+    borderRadius: 30,
+    elevation: 10,
   },
 });

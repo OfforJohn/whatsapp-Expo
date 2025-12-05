@@ -13,5 +13,5 @@
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
-  ]
+, "app/onboarding.jsx", "app/onboarding.jsx", "app/(tabs)/RootLayout.tsx", "components/utils/authStore.ts", "components/utils/authStore.ts", "app/common/Avatar.jsx" ]
 }
