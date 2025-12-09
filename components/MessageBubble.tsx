@@ -1,16 +1,25 @@
 import { View, Text, StyleSheet } from "react-native";
 
 interface Message {
-  text: string;
-  sender: string;
+  id: string;
+  message: string;
+  senderId: number;
+  recieverId: number;
+  messageStatus: "sent" | "delivered" | "read";
+  createdAt: string;
 }
 
-export default function MessageBubble({ message }: { message: Message }) {
-  const isMine = message.sender === "You";
+interface MessageBubbleProps {
+  message: Message;
+  currentUserId: string | number; // accept string or number
+}
+
+export default function MessageBubble({ message, currentUserId }: MessageBubbleProps) {
+  const isMine = message.senderId === Number(currentUserId); // convert string → number if needed
 
   return (
     <View style={[styles.container, isMine ? styles.mine : styles.theirs]}>
-      <Text style={styles.text}>{message.text}</Text>
+      <Text style={styles.text}>{message.message}</Text>
     </View>
   );
 }
@@ -33,5 +42,7 @@ const styles = StyleSheet.create({
     marginRight: "auto",
     borderBottomLeftRadius: 2,
   },
-  text: { color: "#E9EDF0" },
+  text: {
+    color: "#E9EDF0",
+  },
 });

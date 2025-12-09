@@ -1,38 +1,33 @@
-// app/_layout.tsx
 import { Slot, useRouter, useSegments } from "expo-router";
 import { useEffect } from "react";
 import { useAuthStore } from "@/components/utils/authStore";
 import { View, ActivityIndicator } from "react-native";
+import { StateProvider } from "@/src/context/StateContext";
 
 export default function RootLayout() {
   const router = useRouter();
   const segments = useSegments();
   const { isLoggedIn, authLoaded } = useAuthStore();
 
-
   useEffect(() => {
-  if (!authLoaded) return;
+    if (!authLoaded) return;
 
-  const onLoginScreen = segments[0] === "sign-in" || segments[0] === "sign-up";
+    const onLoginScreen = segments[0] === "sign-in" || segments[0] === "sign-up";
 
-  if (!isLoggedIn && !onLoginScreen) {
-    // Delay redirect slightly (e.g., 100ms)
-    const timer = setTimeout(() => {
-      router.replace("/sign-in");
-    }, 100);
+    if (!isLoggedIn && !onLoginScreen) {
+      const timer = setTimeout(() => {
+        router.replace("/sign-in");
+      }, 100);
+      return () => clearTimeout(timer);
+    }
 
-    return () => clearTimeout(timer); // cleanup
-  }
-
-  if (isLoggedIn && onLoginScreen) {
-    const timer = setTimeout(() => {
-      router.replace("/");
-    }, 100);
-
-    return () => clearTimeout(timer); // cleanup
-  }
-}, [authLoaded, isLoggedIn, segments]);
-
+    if (isLoggedIn && onLoginScreen) {
+      const timer = setTimeout(() => {
+        router.replace("/");
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [authLoaded, isLoggedIn, segments]);
 
   if (!authLoaded) {
     return (
@@ -42,5 +37,10 @@ export default function RootLayout() {
     );
   }
 
-  return <Slot />; // ✅ MUST render Slot immediately
+  // ✅ Wrap your entire app in StateProvider
+  return (
+    <StateProvider>
+      <Slot />
+    </StateProvider>
+  );
 }

@@ -8,8 +8,14 @@ export default function SignInScreen() {
   const router = useRouter();
   const logIn = useAuthStore((state) => state.logIn);
 
-  const [email, setEmail] = useState("");
+  
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+
+
+
+
+  const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSignIn = async () => {
@@ -47,14 +53,26 @@ export default function SignInScreen() {
         keyboardType="email-address"
         autoCapitalize="none"
       />
+
+
+ <View style={styles.inputWrapper}>
       <TextInput
         placeholder="Password"
         value={password}
         onChangeText={setPassword}
-        secureTextEntry
-        style={styles.input}
+        secureTextEntry={!showPassword}
         placeholderTextColor="#ccc"
+        style={styles.input}
       />
+      <Pressable
+        onPress={() => setShowPassword(!showPassword)}
+        style={styles.showButton}
+      >
+        <Text style={{ color: "#fff", fontWeight: "bold" }}>
+          {showPassword ? "Hide" : "Show"}
+        </Text>
+      </Pressable>
+    </View>
 
       {/* Login Button */}
       <Pressable
@@ -79,6 +97,19 @@ export default function SignInScreen() {
 }
 
 const styles = StyleSheet.create({
+
+
+   inputWrapper: {
+    position: "relative",
+    marginBottom: 15,
+  },
+  
+  showButton: {
+    position: "absolute",
+    right: 15,
+    top: "50%",
+    transform: [{ translateY: -12 }], // vertically center
+  },
   container: {
     flex: 1,
     justifyContent: "center",

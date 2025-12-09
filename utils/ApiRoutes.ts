@@ -7,6 +7,10 @@ const MESSAGES_ROUTE = `${HOST}/api/messages` as const;
 
 // ---- AUTH ROUTES ----
 export const ONBOARD_USER_ROUTE = `${AUTH_ROUTE}/onboarduser` as const;
+
+export const GET_USER_BY_FIREBASE = `${AUTH_ROUTE}/user` as const;
+
+
 export const CHECK_USER_ROUTE = `${AUTH_ROUTE}/check-user` as const;
 export const GET_ALL_CONTACTS = `${AUTH_ROUTE}/get-contacts` as const;
 export const GET_CALL_TOKEN = `${AUTH_ROUTE}/generate-token` as const;

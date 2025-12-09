@@ -1,45 +1,132 @@
-import { View, TextInput, Text, Pressable, StyleSheet, Image } from "react-native";
+import {
+  View,
+  TextInput,
+  Text,
+  Pressable,
+  StyleSheet,
+  Image,
+} from "react-native";
 import { useState } from "react";
 import { auth } from "@/components/utils/firebase";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
+import axios from "axios";
+import { useAuthStore } from "@/components/utils/authStore"; // your Zustand store
+import { ONBOARD_USER_ROUTE } from "@/utils/ApiRoutes";
 
 export default function SignUpScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const [showPassword, setShowPassword] = useState(false);
+
   const router = useRouter();
+  const setUser = useAuthStore((state) => state.setUser);
 
-  const handleSignUp = async () => {
-    setLoading(true);
-    try {
-      if (!email || !password) throw new Error("Please enter email and password");
+  const defaultImage =
+    "https://i.ibb.co/CJg5v0F/default-avatar.png"; // fallback image
 
-      await createUserWithEmailAndPassword(auth, email, password);
+const handleSignUp = async () => {
+  setLoading(true);
 
-      Toast.show({
-        type: "success",
-        text1: "Account created!",
-        text2: "You can now log in 👋",
-      });
+  console.log("▶️ Sign up started...");
+  console.log("Entered details:", { fullName, email });
 
-      router.replace("/sign-in"); // redirect to Sign In after signup
-    } catch (error: any) {
-      Toast.show({
-        type: "error",
-        text1: "Signup failed",
-        text2: error.message || "Check your details",
-      });
-    } finally {
-      setLoading(false);
+  try {
+    if (!email || !password || !fullName)
+      throw new Error("Please fill all fields");
+
+    // 1️⃣ Create user in Firebase
+    console.log("🔵 Creating Firebase user...");
+    const userCredential = await createUserWithEmailAndPassword(
+      auth,
+      email,
+      password
+    );
+
+    const firebaseUid = userCredential.user.uid;
+    console.log("✅ Firebase user created:", firebaseUid);
+
+    // 2️⃣ Save user in backend
+    console.log("🔵 Sending user to backend:", {
+      uid: firebaseUid,
+      email,
+      name: fullName,
+    });
+
+ const { data } = await axios.post(ONBOARD_USER_ROUTE, {
+  firebaseUid,              // ✔ Correct backend field
+  email,
+  name: fullName,
+  about: "Available",
+  image: defaultImage,
+});
+
+
+    console.log("🟢 Backend response:", data);
+
+    if (!data.status) {
+      console.log("❌ Backend failed to create user");
+      throw new Error("Failed to create backend profile");
     }
-  };
+
+    // 3️⃣ Save to Zustand// 3️⃣ Save to Zustand with BOTH firebaseUid AND backend numeric ID
+console.log("🟣 Saving user to Zustand...");
+
+setUser({
+  uid: firebaseUid,
+  backendId: data.data.id,            // ⭐ save backend numeric ID here
+  name: data.data.name,
+  email: data.data.email,
+  profileImage: data.data.profilePicture,
+  status: data.data.about,
+});
+
+console.log("✅ User stored in Zustand with backend id:", data.data.id);
+
+
+    Toast.show({
+      type: "success",
+      text1: "Account created!",
+      text2: "Welcome 🎉",
+    });
+
+    // 4️⃣ Redirect home
+    console.log("➡️ Redirecting to home...");
+    router.replace("/");
+
+  } catch (error: any) {
+    console.log("❌ SIGNUP ERROR:", error);
+
+    Toast.show({
+      type: "error",
+      text1: "Signup failed",
+      text2: error.message || "Check your details",
+    });
+  } finally {
+    setLoading(false);
+    console.log("⏹ Sign up process finished.");
+  }
+};
+
 
   return (
     <View style={styles.container}>
-      {/* WhatsApp Logo */}
-      <Image source={require("../assets/images/whatsapp.gif")} style={styles.logo} />
+      <Image
+        source={require("../assets/images/whatsapp.gif")}
+        style={styles.logo}
+      />
+
+      <TextInput
+        placeholder="Full Name"
+        value={fullName}
+        onChangeText={setFullName}
+        style={styles.input}
+        placeholderTextColor="#ccc"
+      />
 
       <TextInput
         placeholder="Email"
@@ -50,27 +137,43 @@ export default function SignUpScreen() {
         style={styles.input}
         placeholderTextColor="#ccc"
       />
-      <TextInput
-        placeholder="Password"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-        style={styles.input}
-        placeholderTextColor="#ccc"
-      />
+ {/* Password input with show/hide toggle */}
+      <View style={styles.inputWrapper}>
+        <TextInput
+          placeholder="Password"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry={!showPassword}
+          placeholderTextColor="#ccc"
+          style={styles.input}
+        />
+        <Pressable
+          style={styles.showButton}
+          onPress={() => setShowPassword((prev) => !prev)}
+        >
+          <Text style={styles.showButtonText}>
+            {showPassword ? "Hide" : "Show"}
+          </Text>
+        </Pressable>
+      </View>
 
       <Pressable
         style={[styles.button, loading && { opacity: 0.6 }]}
         onPress={handleSignUp}
         disabled={loading}
       >
-        <Text style={styles.buttonText}>{loading ? "Creating account..." : "Sign Up"}</Text>
+        <Text style={styles.buttonText}>
+          {loading ? "Creating account..." : "Sign Up"}
+        </Text>
       </Pressable>
 
-      {/* Sign In Link */}
-      <Pressable style={styles.signInContainer} onPress={() => router.push("/sign-in")}>
+      <Pressable
+        style={styles.signInContainer}
+        onPress={() => router.push("/sign-in")}
+      >
         <Text style={styles.signInText}>
-          Already have an account? <Text style={styles.signInLink}>Sign In</Text>
+          Already have an account?{" "}
+          <Text style={styles.signInLink}>Sign In</Text>
         </Text>
       </Pressable>
 
@@ -91,6 +194,20 @@ const styles = StyleSheet.create({
     height: 100,
     alignSelf: "center",
     marginBottom: 30,
+  },
+    inputWrapper: {
+    position: "relative",
+    marginBottom: 15,
+  },
+   showButton: {
+    position: "absolute",
+    right: 15,
+    top: "50%",
+    transform: [{ translateY: -10 }],
+  },
+  showButtonText: {
+    color: "#fff",
+    fontWeight: "600",
   },
   input: {
     borderWidth: 1,

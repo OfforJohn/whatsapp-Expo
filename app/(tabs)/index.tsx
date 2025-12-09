@@ -2,10 +2,11 @@ import { View, Text, StyleSheet, TextInput, FlatList, Pressable, Modal } from "r
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import ChatListItem from "@/components/ChatListItem";
 
-import { GET_INITIAL_CONTACTS_ROUTE, HOST } from "@/utils/ApiRoutes";
+import { GET_ALL_CONTACTS, GET_INITIAL_CONTACTS_ROUTE, HOST } from "@/utils/ApiRoutes";
 import axios from "axios";
 import React, { useEffect, useState } from "react";
 import { useAuthStore } from "@/components/utils/authStore";
+import ContactsScreen from "./ContactsScreen";
 
 
 interface ChatItem {
@@ -17,56 +18,98 @@ interface ChatItem {
   avatar: string;
 }
 
+interface Contact {
+  id: number;
+  email: string;
+  name: string;
+  profilePicture: string;
+  about: string;
+}
+
+
 
 export default function ChatsScreen() {
   const [chats, setChats] = useState<ChatItem[]>([]);
-
   const [showMenu, setShowMenu] = useState(false);
 
+  
+  const [showContactsModal, setShowContactsModal] = useState(false);
+  const [contactsData, setContactsData] = useState<{ [key: string]: Contact[] }>({});
 
-  const userId = 1; // logged-in user ID (replace when auth is done)
-
+  const backendId = useAuthStore((state) => state.backendId);
+  const authLoaded = useAuthStore((state) => state.authLoaded);
   const logOut = useAuthStore((state) => state.logOut);
 
 
 
+  
+  // Fetch contacts grouped by letter from backend (your endpoint)
+  useEffect(() => {
+    if (!authLoaded || !backendId) return;
 
+    const fetchContacts = async () => {
+      try {
+        const { data } = await axios.get(`${GET_ALL_CONTACTS}`);
+        // Expecting data.users to be grouped object { "A": [...], "B": [...] }
+        setContactsData(data.users);
 
+      
+      } catch (err) {
+        console.error("Failed to fetch contacts", err);
+      }
+    };
+
+    fetchContacts();
+  }, [authLoaded, backendId]);
 
 
 
 
   useEffect(() => {
+    if (!authLoaded) return;             // Wait until Zustand is restored
+    if (!backendId) {
+      console.log("⚠️ No backendId available, cannot fetch chats");
+      return;
+    }
+
     const fetchChats = async () => {
       try {
-        const { data } = await axios.get(`${GET_INITIAL_CONTACTS_ROUTE}/${userId}`);
+        console.log("📡 Fetching chats for backend ID:", backendId);
 
-   const mappedChats: ChatItem[] = data.users.map((item: any) => ({
-  id: String(item.id),
-  name: item.name,
-  lastMessage: item.message,
- time: new Date(item.createdAt).toLocaleDateString("en-US", {
-  year: "numeric",
-  month: "short",
-  day: "2-digit",
-}),
-
-  unread: item.totalUnreadMessages,
-  avatar: item.profilePicture && item.profilePicture.startsWith("http")
-    ? item.profilePicture
-    : `https://i.pravatar.cc/150?u=${item.id}`
-}));
+        const { data } = await axios.get(
+          `${GET_INITIAL_CONTACTS_ROUTE}/${backendId}`
+        );
 
 
+        const mappedChats: ChatItem[] = data.users.map((item: any) => ({
+          id: String(item.id),
+          name: item.name,
+          lastMessage: item.message,
+          time: (() => {
+            const date = new Date(item.createdAt);
+            let hours = date.getHours() % 12;
+            if (hours === 0) hours = 12; // convert 0 to 12
+            const minutes = date.getMinutes().toString().padStart(2, "0");
+            return `${hours}:${minutes}`;
+          })(),
+
+          unread: item.totalUnreadMessages,
+          avatar:
+            item.profilePicture && item.profilePicture.startsWith("http")
+              ? item.profilePicture
+              : `https://i.pravatar.cc/150?u=${item.id}`,
+        }));
 
         setChats(mappedChats);
       } catch (error) {
-        console.log("Error fetching chats:", error);
+        console.log("❌ Error fetching chats:", error);
       }
     };
 
     fetchChats();
-  }, []);
+  }, [authLoaded, backendId]); // 🔥 re-fetch when auth is ready and backendId exists
+
+
 
   return (
     <View style={styles.container}>
@@ -75,7 +118,11 @@ export default function ChatsScreen() {
         <Text style={styles.headerTitle}>Chats</Text>
 
         <View style={styles.headerIcons}>
-          <Ionicons name="camera-outline" size={23} color="#fff" style={{ marginRight: 20 }} />
+          <Ionicons name="folder" size={23} color="#fff" style={{ marginRight: 20 }} 
+          
+            onPress={() => setShowContactsModal(true)} // Open contacts modal here
+          />
+          
           <Pressable onPress={() => setShowMenu(true)}>
             <Ionicons name="ellipsis-vertical" size={23} color="#fff" />
           </Pressable>
@@ -84,6 +131,53 @@ export default function ChatsScreen() {
 
 
       </View>
+
+{/* Contacts Modal */}
+<Modal visible={showContactsModal} animationType="slide">
+  <View style={{ flex: 1, backgroundColor: "#0B141A" }}>
+
+    {/* --- Modal Header (Close Button) --- */}
+    <View
+      style={{
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        paddingHorizontal: 15,
+        paddingTop: 45,
+        paddingBottom: 10,
+        backgroundColor: "#0B141A",
+        borderBottomColor: "#1f2c34",
+        borderBottomWidth: 1,
+        zIndex: 10,
+      }}
+    >
+      <Text style={{ color: "#fff", fontSize: 20, fontWeight: "600" }}>
+        Contacts
+      </Text>
+
+      <Pressable
+        onPress={() => setShowContactsModal(false)}
+        style={{
+          backgroundColor: "#25D366",
+          paddingVertical: 6,
+          paddingHorizontal: 14,
+          borderRadius: 20,
+        }}
+      >
+        <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 14 }}>
+          Go back
+        </Text>
+      </Pressable>
+    </View>
+
+    {/* --- Contacts Screen Content --- */}
+    <ContactsScreen
+      contactsData={contactsData}
+      onClose={() => setShowContactsModal(false)}
+    />
+  </View>
+</Modal>
+
 
 
       <Modal visible={showMenu} transparent animationType="fade">
@@ -133,10 +227,12 @@ export default function ChatsScreen() {
         keyExtractor={(item) => item.id}
       />
 
-      {/* Floating Button */}
+      {/* Floating Button   
       <Pressable style={styles.fab}>
         <MaterialCommunityIcons name="message-plus" color="#2b2626ff" size={28} />
       </Pressable>
+
+      */}
     </View>
   );
 
