@@ -16,6 +16,10 @@ type AuthState = {
 
   userId: string | null;        // Firebase UID
   backendId: number | null;     // Backend numeric ID
+  
+
+  refreshChats: boolean;              // 👈 NEW
+  setRefreshChats: (value: boolean) => void; // 👈 NEW
 
   authLoaded: boolean;
   manualLogout: boolean;
@@ -48,6 +52,9 @@ export const useAuthStore = create<AuthState>()(
 
       userId: null,          // firebase UID
       backendId: null,       // backend numeric ID
+      
+refreshChats: false,               // 👈 NEW
+setRefreshChats: (value: boolean) => set({ refreshChats: value }), // 👈 NEW
 
       authLoaded: false,
       manualLogout: false,
