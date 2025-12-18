@@ -1,33 +1,33 @@
 {
   "cli": {
     "version": ">= 16.28.0",
-    "appVersionSource": "remote" 
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
       "developmentClient": true,
       "distribution": "internal",
       "android": {
-        "buildType": "apk" 
+        "buildType": "apk"
       },
       "ios": {
-        "simulator": true 
+        "simulator": true
       }
     },
     "preview": {
       "distribution": "internal",
       "android": {
-        "gradleCommand": ":app:assembleRelease" 
+        "gradleCommand": ":app:assembleRelease"
       }
     },
-    "production": {
-      "autoIncrement": true,                  
+    "testing": {
+      "distribution": "internal",
       "android": {
-        "gradleCommand": ":app:bundleRelease", 
-        "buildType": "app-bundle"            
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease"
       },
       "ios": {
-        "buildConfiguration": "Release"     
+        "buildConfiguration": "Release"
       }
     }
   },

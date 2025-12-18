@@ -6,7 +6,6 @@ import {
   Text,
   StyleSheet,
   TextInput,
-  FlatList,
   Image,
   SectionList,
   Pressable,

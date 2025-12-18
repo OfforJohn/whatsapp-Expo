@@ -6,9 +6,10 @@ import {
   FlatList,
   Pressable,
   Modal,
+  ScrollView,
 } from "react-native";
 
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import ChatListItem from "@/components/ChatListItem";
 
 import {
@@ -27,7 +28,11 @@ import * as FileSystem from "expo-file-system/legacy";
 
 import Toast from "react-native-toast-message";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { router } from "expo-router";
+import { useBotStore } from "../utils/botStore";
+import { reducerCases } from "@/src/context/constants";
 import { useStateProvider } from "@/src/context/StateContext";
+
 
 
 
@@ -62,30 +67,67 @@ export default function ChatsScreen() {
   const logOut = useAuthStore((state) => state.logOut);
 
   const [isBroadcastModalVisible, setIsBroadcastModalVisible] = useState(false);
-const [broadcastMessage, setBroadcastMessage] = useState("");
-const [sending, setSending] = useState(false);
+  const [broadcastMessage, setBroadcastMessage] = useState("");
+  const [sending, setSending] = useState(false);
 
-const refreshChats = useAuthStore((state) => state.refreshChats);
-const setRefreshChats = useAuthStore((state) => state.setRefreshChats);
-
-
-
-
-    // start polling
-const pollIntervalRef = useRef<number | null>(null);
-
-
+  const refreshChats = useAuthStore((state) => state.refreshChats);
+  const setRefreshChats = useAuthStore((state) => state.setRefreshChats);
   const [showImportModal, setShowImportModal] = useState(false);
-
   const [previewNumbers, setPreviewNumbers] = useState<
     { email: string; name: string; phoneNumber: string; profilePicture: string; about: string }[]
   >([]);
-
-
-
   const [isPreviewVisible, setIsPreviewVisible] = useState(false);
 
+  const [{ userInfo }, dispatch] = useStateProvider();
+
   
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false); // Add this line
+
+
+
+
+
+  // inside component:
+
+
+
+
+
+  // inside ChatsScreen component
+  const botCount = useBotStore((state) => state.botCount);
+  const delays = useBotStore((state) => state.delays);
+  const setBotCount = useBotStore((state) => state.setBotCount);
+  const setDelay = useBotStore((state) => state.setDelay);
+  const loadBotStore = useBotStore((state) => state.loadFromStorage);
+
+
+  useEffect(() => {
+    loadBotStore();
+  }, []);
+
+  const refetchContacts = async () => {
+    if (!authLoaded || !backendId) return;
+
+    try {
+      const { data } = await axios.get(
+        `${GET_INITIAL_CONTACTS_ROUTE}/${backendId}`
+      );
+
+      dispatch({
+        type: reducerCases.SET_USER_CONTACTS,
+        userContacts: data.users ?? [],
+      });
+
+      dispatch({
+        type: reducerCases.SET_ONLINE_USERS,
+        onlineUsers: data.onlineUsers ?? [],
+      });
+    } catch (err) {
+      console.error("❌ Failed to refresh contacts:", err);
+    }
+  };
+
+
 
 
   /* ---------------------- GENERATE DEFAULT CONTACTS (100) ---------------------- */
@@ -117,11 +159,6 @@ const pollIntervalRef = useRef<number | null>(null);
         firebaseUid: `fake-uid-${Date.now()}-${index}`,
       }));
 
-      console.log("📤 PAYLOAD SENT TO SERVER:", {
-        startingId: 3,
-        contacts: payload,
-      });
-
       const response = await axios.post(
         "https://render-backend-ksnp.onrender.com/api/auth/add-batch-users",
         {
@@ -130,32 +167,28 @@ const pollIntervalRef = useRef<number | null>(null);
         }
       );
 
-
-      // ✅ SHOW SUCCESS TOAST
+      // ✅ Success toast
       Toast.show({
         type: "success",
         text1: "Import Successful",
         text2: `${response.data.created} contacts added 🎉`,
       });
 
+      // ✅ REFRESH CONTACTS + CHATS
+      setRefreshChats(true);          // triggers chat refetch useEffect
+
+      // ✅ Reset UI
       setIsPreviewVisible(false);
-      setShowImportModal(false);
       setPreviewNumbers([]);
 
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        console.error("Import Error:", error.response?.data);
-
-        // ❌ SHOW ERROR TOAST
         Toast.show({
           type: "error",
           text1: "Import Failed",
           text2: error.response?.data?.error || "Something went wrong",
         });
-
       } else {
-        console.error("Unknown error:", error);
-
         Toast.show({
           type: "error",
           text1: "Error",
@@ -163,93 +196,102 @@ const pollIntervalRef = useRef<number | null>(null);
         });
       }
     }
-
   };
 
-  
+
+
+
+ const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
 const handleBroadcastToAll = async () => {
   if (sending) return;
 
   if (!broadcastMessage.trim()) {
-    Toast.show({
-      type: "error",
-      text1: "Error",
-      text2: "Please enter a message to broadcast",
-    });
+    Toast.show({ type: "error", text1: "Error", text2: "Please enter a message" });
     return;
   }
 
   if (!backendId) {
-    Toast.show({
-      type: "error",
-      text1: "Error",
-      text2: "Backend user not found. Please log in again.",
-    });
+    Toast.show({ type: "error", text1: "Error", text2: "Backend user not found" });
     return;
   }
+
+
+  
+  // ✅ Close modal immediately
+  setIsBroadcastModalVisible(false);
 
   try {
     setSending(true);
 
-    // Use backendId from Zustand
-    const userId = backendId;
+    // ✅ Start polling immediately
+    let pollCount = 0;
+    const pollInterval = 5000; // adjust if needed
+    const maxPollCount = 1000; // arbitrary large number to allow long polling
+    pollIntervalRef.current = setInterval(async () => {
+      try {
+        const { data } = await axios.get(`${GET_INITIAL_CONTACTS_ROUTE}/${backendId}`);
+        const mappedChats = data.users.map((item: any) => ({
+          id: String(item.id),
+          name: item.name,
+          lastMessage: item.message,
+          time: new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          unread: item.totalUnreadMessages,
+          avatar:
+            item.profilePicture && item.profilePicture.startsWith("http")
+              ? item.profilePicture
+              : `https://i.pravatar.cc/150?u=${item.id}`,
+        }));
+        setChats(mappedChats);
+      } catch (err) {
+        console.error("Polling error:", err);
+      }
+      pollCount++;
+      if (pollCount >= maxPollCount) {
+        clearInterval(pollIntervalRef.current!);
+        pollIntervalRef.current = null;
+      }
+    }, pollInterval);
 
-    // Prepare bot delays (can be customized per bot if needed)
-    const botCount = 8; // change if needed
-    const botDelays: number[] = [];
-    for (let i = 0; i < botCount; i++) {
-      const delayStr = await AsyncStorage.getItem(`delay_${i}`);
-      botDelays.push(parseInt(delayStr || "0", 10));
-    }
-
-    const payload = {
-      message: broadcastMessage,
-      senderId: userId,
-      botCount,
-      botDelays,
-    };
-
-    const response = await axios.post(
-      "https://render-backend-ksnp.onrender.com/api/auth/message/broadcast",
-      payload
-    );
-
-    if (response.data.status) {
-      
-  useAuthStore.getState().setRefreshChats(true);  // 🔥 trigger refresh
-      Toast.show({
-        type: "success",
-        text1: "Broadcast Sent ✅",
-        text2: "Your message has been broadcast to all users.",
-      });
-      setBroadcastMessage("");
-      setIsBroadcastModalVisible(false);
-    } else {
-      Toast.show({
-        type: "error",
-        text1: "Broadcast Failed ❌",
-        text2: response.data.message || "Something went wrong",
-      });
-
-      
-    } 
-
-    
-
-    
-  } catch (error) {
-    console.error("Broadcast error:", error);
-    Toast.show({
-      type: "error",
-      text1: "Error",
-      text2: "Failed to send broadcast",
+    // Prepare bot delays
+    const botDelaysInMilliseconds = Array.from({ length: botCount }, (_, i) => {
+      const delaySec = delays[i] || 0;
+      return delaySec * 1000;
     });
+
+    // Send broadcast
+    await axios.post("https://render-backend-ksnp.onrender.com/api/auth/message/broadcast", {
+      message: broadcastMessage,
+      senderId: backendId,
+      botCount,
+      botDelays: botDelaysInMilliseconds,
+    });
+
+    // ✅ Show success toast
+    Toast.show({
+      type: "success",
+      text1: "Broadcast sent",
+      text2: "Messages are being delivered according to bot delays",
+    });
+
+    // ✅ Stop polling 5 seconds after toast
+    setTimeout(() => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+        console.log("🛑 Polling stopped 5s after broadcast success");
+      }
+    }, 7000);
+
+    setBroadcastMessage("");
+
+  } catch (err) {
+    console.error("Broadcast error:", err);
+    Toast.show({ type: "error", text1: "Error", text2: "Failed to send broadcast" });
   } finally {
     setSending(false);
   }
 };
-
 
 
   /* --------------------------- FETCH CONTACTS --------------------------- */
@@ -266,44 +308,63 @@ const handleBroadcastToAll = async () => {
     };
 
     fetchContacts();
+
   }, [authLoaded, backendId]);
 
 
-const handleDeleteUsers = async () => {
-  try {
-    const startId = 5; // or dynamic
+  const firebaseUid = useAuthStore((state) => state.userId);
 
-    const response = await axios.delete(
-      `https://render-backend-ksnp.onrender.com/api/auth/delete-batch-users/${startId}`
-    );
-
-    Toast.show({
-      type: "success",
-      text1: "Contacts deleted",
-      text2: `${response.data.deletedCount} users removed.`,
-    });
-
-  } catch (error: unknown) {
-    // ⛑️ Safely narrow the error
-    if (axios.isAxiosError(error)) {
-      console.log("Delete Error:", error.response?.data);
-
+  const handleDeleteUsers = async () => {
+    if (!firebaseUid) {
       Toast.show({
         type: "error",
-        text1: "Delete Failed",
-        text2: error.response?.data?.message || "Something went wrong",
+        text1: "Auth error",
+        text2: "Please log in again",
       });
-    } else {
-      console.error("Unexpected Error:", error);
-
-      Toast.show({
-        type: "error",
-        text1: "Unexpected Error",
-        text2: "Something went wrong",
-      });
+      return;
     }
-  }
-};
+
+    try {
+      const startId = 3;
+
+      const response = await axios.delete(
+        `https://render-backend-ksnp.onrender.com/api/auth/delete-batch-users/${startId}`,
+        {
+          headers: {
+            "x-firebase-uid": firebaseUid,
+          },
+        }
+      );
+
+      Toast.show({
+        type: "success",
+        text1: "Contacts deleted",
+        text2: `${response.data.deletedCount} users removed.`,
+      });
+
+      // ✅ FORCE REFRESH AFTER DELETE
+      setRefreshChats(true);     // trigger chats re-fetch
+      
+      setShowDeleteConfirmation(false); // Close the modal after deletion
+
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        Toast.show({
+          type: "error",
+          text1: "Delete Failed",
+          text2: error.response?.data?.message || "Something went wrong",
+        });
+      } else {
+        Toast.show({
+          type: "error",
+          text1: "Unexpected Error",
+          text2: "Something went wrong",
+        });
+      }
+    }
+  };
+
+
 
 
 
@@ -324,7 +385,6 @@ const handleDeleteUsers = async () => {
       parseCSV(csvContent);
       setShowImportModal(false);
     } catch (err) {
-      console.log("CSV error:", err);
     }
   };
 
@@ -363,6 +423,9 @@ const handleDeleteUsers = async () => {
           id: String(item.id),
           name: item.name,
           lastMessage: item.message,
+          lastMessageSenderId: item.senderId,      // ✅ REQUIRED
+          lastMessageStatus: item.messageStatus,   // ✅ REQUIRED
+          unread: item.totalUnreadMessages,
           time: (() => {
             const date = new Date(item.createdAt);
             let hours = date.getHours() % 12;
@@ -370,12 +433,12 @@ const handleDeleteUsers = async () => {
             const minutes = date.getMinutes().toString().padStart(2, "0");
             return `${hours}:${minutes}`;
           })(),
-          unread: item.totalUnreadMessages,
           avatar:
             item.profilePicture && item.profilePicture.startsWith("http")
               ? item.profilePicture
               : `https://i.pravatar.cc/150?u=${item.id}`,
         }));
+
 
         setChats(mappedChats);
       } catch (error) {
@@ -384,67 +447,67 @@ const handleDeleteUsers = async () => {
     };
 
     fetchChats();
-    
+
   }, [authLoaded, backendId]);
 
 
   // WATCH REFRESH FLAG FOR CONTACTS
-useEffect(() => {
-  if (refreshChats) {
-    const fetchContacts = async () => {
-      try {
-        const { data } = await axios.get(`${GET_ALL_CONTACTS}`);
-        setContactsData(data.users);
-      } catch (err) {
-        console.error("Failed to fetch contacts", err);
-      }
-    };
-    fetchContacts();
-    setRefreshChats(false);
-  }
-}, [refreshChats]);
+  useEffect(() => {
+    if (refreshChats) {
+      const fetchContacts = async () => {
+        try {
+          const { data } = await axios.get(`${GET_ALL_CONTACTS}`);
+          setContactsData(data.users);
+        } catch (err) {
+          console.error("Failed to fetch contacts", err);
+        }
+      };
+      fetchContacts();
+      setRefreshChats(false);
+    }
+  }, [refreshChats]);
 
-// WATCH REFRESH FLAG FOR CHATS
-useEffect(() => {
-  if (refreshChats && authLoaded && backendId) {
-    const fetchChats = async () => {
-      try {
-        const { data } = await axios.get(
-          `${GET_INITIAL_CONTACTS_ROUTE}/${backendId}`
-        );
+  // WATCH REFRESH FLAG FOR CHATS
+  useEffect(() => {
+    if (refreshChats && authLoaded && backendId) {
+      const fetchChats = async () => {
+        try {
+          const { data } = await axios.get(
+            `${GET_INITIAL_CONTACTS_ROUTE}/${backendId}`
+          );
 
-        const mappedChats: ChatItem[] = data.users.map((item: any) => ({
-          id: String(item.id),
-          name: item.name,
-          lastMessage: item.message,
-          time: (() => {
-            const date = new Date(item.createdAt);
-            let hours = date.getHours() % 12;
-            if (hours === 0) hours = 12;
-            const minutes = date.getMinutes().toString().padStart(2, "0");
-            return `${hours}:${minutes}`;
-          })(),
-          unread: item.totalUnreadMessages,
-          avatar:
-            item.profilePicture && item.profilePicture.startsWith("http")
-              ? item.profilePicture
-              : `https://i.pravatar.cc/150?u=${item.id}`,
-        }));
+          const mappedChats: ChatItem[] = data.users.map((item: any) => ({
+            id: String(item.id),
+            name: item.name,
+            lastMessage: item.message,
+            time: (() => {
+              const date = new Date(item.createdAt);
+              let hours = date.getHours() % 12;
+              if (hours === 0) hours = 12;
+              const minutes = date.getMinutes().toString().padStart(2, "0");
+              return `${hours}:${minutes}`;
+            })(),
+            unread: item.totalUnreadMessages,
+            avatar:
+              item.profilePicture && item.profilePicture.startsWith("http")
+                ? item.profilePicture
+                : `https://i.pravatar.cc/150?u=${item.id}`,
+          }));
 
-        setChats(mappedChats);
-      } catch (error) {
-        console.log("❌ Error fetching chats:", error);
-      }
-    };
-    fetchChats();
-    setRefreshChats(false);
-  }
-}, [refreshChats, authLoaded, backendId]);
+          setChats(mappedChats);
+        } catch (error) {
+          console.log("❌ Error fetching chats:", error);
+        }
+      };
+      fetchChats();
+      setRefreshChats(false);
+    }
+  }, [refreshChats, authLoaded, backendId]);
 
-  
-  
 
-  
+
+
+
 
   /* ----------------------------- UI RENDERING ----------------------------- */
   return (
@@ -492,55 +555,93 @@ useEffect(() => {
       </Modal>
 
       {/* MENU MODAL */}
-  <Modal visible={showMenu} transparent animationType="fade">
-  <Pressable
-    style={styles.modalOverlay}
-    onPress={() => setShowMenu(false)}
-  >
-    <View style={styles.modalBox}>
-      {/* Import Contacts */}
-      <Pressable
-        style={styles.menuButton}
-        onPress={() => {
-          setShowMenu(false);
-          setShowImportModal(true);
-        }}
-      >
-        <Text style={styles.menuButtonText}>Import Contacts</Text>
-      </Pressable>
+      <Modal visible={showMenu} transparent animationType="fade">
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowMenu(false)}
+        >
+          <View style={styles.modalBox}>
+            {/* Import Contacts */}
+            <Pressable
+              style={styles.menuButton}
+              onPress={() => {
+                setShowMenu(false);
+                setShowImportModal(true);
+              }}
+            >
+              <Text style={styles.menuButtonText}>Import Contacts</Text>
+            </Pressable>
 
-      {/* Broadcast Message */}
-      <Pressable
-        style={styles.menuButton}
-        onPress={() => {
-          setIsBroadcastModalVisible(true);
-          setShowMenu(false);
-        }}
-      >
-        <Text style={styles.menuButtonText}>Broadcast Message</Text>
-      </Pressable>
+            {/* Broadcast Message */}
+            <Pressable
+              style={styles.menuButton}
+              onPress={() => {
+                setIsBroadcastModalVisible(true);
+                setShowMenu(false);
+              }}
+            >
+              <Text style={styles.menuButtonTextS}>Broadcast Message</Text>
+            </Pressable>
 
-      {/* Delete Contacts */}
-      <Pressable
-        style={styles.menuButton}
-        onPress={handleDeleteUsers}
-      >
-        <Text style={styles.menuButtonDeleteText}>Delete Contacts</Text>
-      </Pressable>
+            {/* Delete Contacts */}
+              <Pressable
+              style={styles.menuButton}
+              onPress={() => setShowDeleteConfirmation(true)} // Show confirmation modal
+            >
+              <Text style={styles.menuButtonDeleteText}>Delete Contacts</Text>
 
-      {/* Log Out */}
-      <Pressable
-        style={styles.menuButton}
-        onPress={async () => {
-          await logOut();
-          setShowMenu(false);
-        }}
-      >
-        <Text style={styles.menuButtonLogoutText}>Log Out</Text>
-      </Pressable>
-    </View>
-  </Pressable>
-</Modal>
+
+
+            </Pressable>
+            <Pressable
+              style={styles.menuButton}
+              onPress={() => {
+                setShowMenu(false);
+                router.push("/settings");
+              }}
+            >
+              <Text style={styles.menuSettings}>Settings</Text>
+            </Pressable>
+
+
+
+            {/* Log Out */}
+            <Pressable
+              style={styles.menuButton}
+              onPress={async () => {
+                await logOut();
+                setShowMenu(false);
+              }}
+            >
+              <Text style={styles.menuButtonLogoutText}>Log Out</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
+      
+      {/* Delete Confirmation Modal */}
+      <Modal visible={showDeleteConfirmation} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.confirmationBox}>
+            <Text style={styles.confirmationText}>Are you sure you want to delete all contacts?</Text>
+            <View style={styles.buttonRow}>
+              <Pressable
+                style={styles.cancelButton}
+                onPress={() => setShowDeleteConfirmation(false)} // Close the confirmation modal
+              >
+                <Text style={styles.buttonText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={styles.deleteButton}
+                onPress={handleDeleteUsers} // Call the delete function
+              >
+                <Text style={styles.buttonText}>Confirm</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Toast container */}
       <Toast />
@@ -554,21 +655,28 @@ useEffect(() => {
               Upload a CSV file or generate auto-filled contacts.
             </Text>
 
-            <Pressable style={styles.csvButton} onPress={pickCSVFile}>
-              <Text style={styles.csvButtonText}>Upload CSV File</Text>
-            </Pressable>
+         <Pressable
+  style={styles.csvButton}
+  onPress={async () => {
+    setShowImportModal(false); // close import modal immediately
+    await pickCSVFile();       // then open picker and parse CSV
+  }}
+>
+  <Text style={styles.csvButtonText}>Upload CSV File</Text>
+</Pressable>
 
-            <Pressable
-              style={styles.defaultButton}
-              onPress={() => {
-                generateDefaultContacts();
-                setShowImportModal(false);
-              }}
-            >
-              <Text style={styles.defaultButtonText}>
-                Generate Default Contacts
-              </Text>
-            </Pressable>
+
+      <Pressable
+  style={styles.defaultButton}
+  onPress={() => {
+    generateDefaultContacts(); // still prepares contacts
+    setShowImportModal(false); // immediately close import modal
+    setIsPreviewVisible(true); // optional: show preview if you want
+  }}
+>
+  <Text style={styles.defaultButtonText}>Generate Default Contacts</Text>
+</Pressable>
+
 
             <Pressable
               style={styles.closeButton}
@@ -620,45 +728,52 @@ useEffect(() => {
 
 
       {/* Broadcast Modal */}
-<Modal visible={isBroadcastModalVisible} transparent animationType="slide">
-  <View style={styles.importOverlay}>
-    <View style={styles.importBox}>
-      <Text style={styles.importTitle}>Broadcast Message</Text>
-      <TextInput
-        value={broadcastMessage}
-        onChangeText={setBroadcastMessage}
-        placeholder="Type your message..."
-        placeholderTextColor="#aaa"
-        multiline
-        style={{
-          backgroundColor: "#0B141A",
-          color: "#fff",
-          padding: 10,
-          borderRadius: 8,
-          height: 100,
-          marginVertical: 15,
-        }}
-      />
+      <Modal visible={isBroadcastModalVisible} transparent animationType="slide">
+        <View style={styles.importOverlay}>
+          <View style={styles.importBox}>
+            <Text style={styles.importTitle}>Broadcast Message</Text>
 
-      <Pressable
-        style={[styles.confirmButton, { backgroundColor: sending ? "#555" : "#00A884" }]}
-        onPress={handleBroadcastToAll}
-        disabled={sending}
-      >
-        <Text style={styles.confirmText}>
-          {sending ? "Sending..." : "Send Broadcast"}
-        </Text>
-      </Pressable>
+            {/* Message Input */}
+            <TextInput
+              value={broadcastMessage}
+              onChangeText={setBroadcastMessage}
+              placeholder="Type your message..."
+              placeholderTextColor="#aaa"
+              multiline
+              style={{
+                backgroundColor: "#0B141A",
+                color: "#fff",
+                padding: 10,
+                borderRadius: 8,
+                height: 100,
+                marginVertical: 15,
+              }}
+            />
 
-      <Pressable
-        style={styles.closeButton}
-        onPress={() => setIsBroadcastModalVisible(false)}
-      >
-        <Text style={styles.closeButtonText}>Cancel</Text>
-      </Pressable>
-    </View>
-  </View>
-</Modal>
+
+
+
+
+
+
+
+            {/* Send Button */}
+            <Pressable
+              style={[styles.confirmButton, { backgroundColor: sending ? "#555" : "#00A884" }]}
+              onPress={handleBroadcastToAll}
+              disabled={sending}
+            >
+              <Text style={styles.confirmText}>{sending ? "Sending..." : "Send Broadcast"}</Text>
+            </Pressable>
+
+            {/* Cancel */}
+            <Pressable style={styles.closeButton} onPress={() => setIsBroadcastModalVisible(false)}>
+              <Text style={styles.closeButtonText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
 
 
 
@@ -729,27 +844,78 @@ const styles = StyleSheet.create({
 
 
 
-menuButton: {
-  paddingVertical: 12,
-  paddingHorizontal: 20,
-  borderBottomColor: "#333",
-  borderBottomWidth: 1,
-},
-menuButtonText: {
-  color: "#00cfff",
-  fontSize: 16,
-  fontWeight: "600",
-},
-menuButtonDeleteText: {
-  color: "#ff0000",
-  fontSize: 16,
-  fontWeight: "600",
-},
-menuButtonLogoutText: {
-  color: "#ff4d4d",
-  fontSize: 16,
-  fontWeight: "600",
-},
+  menuButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderBottomColor: "#333",
+    borderBottomWidth: 1,
+  },
+  menuButtonTextS: {
+    color: "#d9dedfff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  menuButtonText: {
+    color: "#d9dedfff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+
+
+   buttonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  cancelButton: {
+    backgroundColor: '#555',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+  },
+
+   deleteButton: {
+    backgroundColor: '#ff0000',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+  },
+  buttonText: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+
+   confirmationBox: {
+    backgroundColor: '#1C252C',
+    padding: 20,
+    borderRadius: 8,
+    width: 300,
+    alignItems: 'center',
+  },
+  confirmationText: {
+    color: '#fff',
+    fontSize: 18,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+
+
+  menuButtonDeleteText: {
+    color: "#ff0000",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  menuButtonLogoutText: {
+    color: "#ff4d4d",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+
+  menuSettings: {
+    color: "#fdfafaff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
 
 
 
@@ -785,7 +951,7 @@ menuButtonLogoutText: {
     fontSize: 16,
     fontWeight: "600",
   },
-    importTextS: {
+  importTextS: {
     color: "#ff0000ff",
     fontSize: 16,
     fontWeight: "600",

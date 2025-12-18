@@ -13,7 +13,7 @@ export const StateProvider = ({ children }) => (
 );
 
 
-console.log(initialState)
-console.log(reducer)
+console.log("ddd",initialState)
+console.log("ss",reducer)
 
 export const useStateProvider = () => useContext(StateContext);

@@ -27,7 +27,7 @@ export default function SignUpScreen() {
   const setUser = useAuthStore((state) => state.setUser);
 
   const defaultImage =
-    "https://i.ibb.co/CJg5v0F/default-avatar.png"; // fallback image
+    "https://raw.githubusercontent.com/OfforJohn/Watapp/refs/heads/main/public/default_avatar.png"; // fallback image
 
 const handleSignUp = async () => {
   setLoading(true);

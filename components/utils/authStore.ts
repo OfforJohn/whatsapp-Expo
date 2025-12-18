@@ -16,7 +16,7 @@ type AuthState = {
 
   userId: string | null;        // Firebase UID
   backendId: number | null;     // Backend numeric ID
-  
+
 
   refreshChats: boolean;              // 👈 NEW
   setRefreshChats: (value: boolean) => void; // 👈 NEW
@@ -49,13 +49,10 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       isLoggedIn: false,
       loading: false,
-
       userId: null,          // firebase UID
       backendId: null,       // backend numeric ID
-      
-refreshChats: false,               // 👈 NEW
-setRefreshChats: (value: boolean) => set({ refreshChats: value }), // 👈 NEW
-
+      refreshChats: false,               // 👈 NEW
+      setRefreshChats: (value: boolean) => set({ refreshChats: value }), // 👈 NEW
       authLoaded: false,
       manualLogout: false,
 
@@ -70,133 +67,133 @@ setRefreshChats: (value: boolean) => set({ refreshChats: value }), // 👈 NEW
         }),
 
       /** FIREBASE AUTH STATE LISTENER  */
-/** FIREBASE AUTH STATE LISTENER */
-initializeAuthListener: () => {
-  onAuthStateChanged(auth, async (user) => {
-    console.log("🔥 Firebase Auth Change — user:", user ? user.uid : "NO USER");
+      /** FIREBASE AUTH STATE LISTENER */
+      initializeAuthListener: () => {
+        onAuthStateChanged(auth, async (user) => {
+          console.log("🔥 Firebase Auth Change — user:", user ? user.uid : "NO USER");
 
-    if (!user) {
-      console.log("❌ Firebase says: LOGGED OUT");
-      set({
-        userId: null,
-        backendId: null,
-        isLoggedIn: false,
-        authLoaded: true,
-      });
-      return;
-    }
+          if (!user) {
+            console.log("❌ Firebase says: LOGGED OUT");
+            set({
+              userId: null,
+              backendId: null,
+              isLoggedIn: false,
+              authLoaded: true,
+            });
+            return;
+          }
 
-    const uid = user.uid;
-    console.log("✅ Firebase says: LOGGED IN:", uid);
+          const uid = user.uid;
+          console.log("✅ Firebase says: LOGGED IN:", uid);
 
-    // Reset manualLogout on any login
-    set({ manualLogout: false });
+          // Reset manualLogout on any login
+          set({ manualLogout: false });
 
-    // Fetch backend user
-    try {
-      const { data } = await axios.get(`${GET_USER_BY_FIREBASE}/${uid}`);
+          // Fetch backend user
+          try {
+            const { data } = await axios.get(`${GET_USER_BY_FIREBASE}/${uid}`);
 
-      let backendUser;
-      if (data.status) {
-        backendUser = data.data;
-      } else {
-        console.warn("⚠️ Backend user not found. Creating a new backend profile...");
+            let backendUser;
+            if (data.status) {
+              backendUser = data.data;
+            } else {
+              console.warn("⚠️ Backend user not found. Creating a new backend profile...");
 
-        // Auto-onboard user if missing
-        const onboardRes = await axios.post(ONBOARD_USER_ROUTE, {
-          firebaseUid: uid,
-          email: user.email || "unknown@example.com",
-          name: user.displayName || "Unknown",
-          about: "Available",
-          image: "https://i.ibb.co/CJg5v0F/default-avatar.png",
+              // Auto-onboard user if missing
+              const onboardRes = await axios.post(ONBOARD_USER_ROUTE, {
+                firebaseUid: uid,
+                email: user.email || "unknown@example.com",
+                name: user.displayName || "Unknown",
+                about: "Available",
+                image: "https://i.ibb.co/CJg5v0F/default-avatar.png",
+              });
+              backendUser = onboardRes.data.data;
+            }
+
+            // Save to Zustand
+            set({
+              userId: uid,
+              backendId: backendUser.id,
+              isLoggedIn: true,
+              authLoaded: true,
+            });
+
+            console.log("🟢 Backend user restored:", backendUser.id);
+          } catch (err) {
+            console.error("❌ Failed to fetch or onboard backend user:", err);
+            // Still mark authLoaded true to avoid hanging UI
+            set({
+              userId: uid,
+              backendId: null,
+              isLoggedIn: true,
+              authLoaded: true,
+            });
+          }
         });
-        backendUser = onboardRes.data.data;
-      }
-
-      // Save to Zustand
-      set({
-        userId: uid,
-        backendId: backendUser.id,
-        isLoggedIn: true,
-        authLoaded: true,
-      });
-
-      console.log("🟢 Backend user restored:", backendUser.id);
-    } catch (err) {
-      console.error("❌ Failed to fetch or onboard backend user:", err);
-      // Still mark authLoaded true to avoid hanging UI
-      set({
-        userId: uid,
-        backendId: null,
-        isLoggedIn: true,
-        authLoaded: true,
-      });
-    }
-  });
-},
+      },
 
 
 
 
       /** LOGIN */
-logIn: async (email: string, password: string) => {
-  try {
-    // Firebase login
-    const userCred = await signInWithEmailAndPassword(auth, email, password);
-    const firebaseUid = userCred.user.uid;
-    console.log("🔥 Firebase signed in:", firebaseUid);
+      logIn: async (email: string, password: string) => {
+        try {
+          // Firebase login
+          const userCred = await signInWithEmailAndPassword(auth, email, password);
+          const firebaseUid = userCred.user.uid;
+          console.log("🔥 Firebase signed in:", firebaseUid);
 
-    // Reset manualLogout
-    set({ manualLogout: false });
+          // Reset manualLogout
+          set({ manualLogout: false });
 
-    // Fetch backend user
-    let backendUser;
-    try {
-      const { data } = await axios.get(`${GET_USER_BY_FIREBASE}/${firebaseUid}`);
-      if (data.status) {
-        backendUser = data.data;
-      } else {
-        console.warn("⚠️ Backend user not found. Creating backend profile...");
+          // Fetch backend user
+          let backendUser;
+          try {
+            const { data } = await axios.get(`${GET_USER_BY_FIREBASE}/${firebaseUid}`);
+            if (data.status) {
+              backendUser = data.data;
+            } else {
+              console.warn("⚠️ Backend user not found. Creating backend profile...");
 
-        const onboardRes = await axios.post(ONBOARD_USER_ROUTE, {
-          firebaseUid,
-          email,
-          name: userCred.user.displayName || "Unknown",
-          about: "Available",
-          image: "https://i.ibb.co/CJg5v0F/default-avatar.png",
-        });
-        backendUser = onboardRes.data.data;
-      }
-    } catch (err) {
-      console.error("❌ Failed to fetch backend user:", err);
-      throw new Error("Failed to retrieve or create backend profile");
-    }
+              const onboardRes = await axios.post(ONBOARD_USER_ROUTE, {
+                firebaseUid,
+                email,
+                name: userCred.user.displayName || "Unknown",
+                about: "Available",
+                image: "https://i.ibb.co/CJg5v0F/default-avatar.png",
+              });
+              backendUser = onboardRes.data.data;
+            }
+          } catch (err) {
+            console.error("❌ Failed to fetch backend user:", err);
+            throw new Error("Failed to retrieve or create backend profile");
+          }
 
-    // Save to Zustand
-    const { setUser } = useAuthStore.getState();
-    setUser({
-      uid: firebaseUid,
-      backendId: backendUser.id,
-      name: backendUser.name,
-      email: backendUser.email,
-      profileImage: backendUser.profilePicture,
-      status: backendUser.about,
-    });
-    console.log("✅ Zustand stored user:", backendUser.id);
+          // Save to Zustand
+          const { setUser } = useAuthStore.getState();
+          setUser({
+            uid: firebaseUid,
+            backendId: backendUser.id,
+            name: backendUser.name,
+            email: backendUser.email,
+            profileImage: backendUser.profilePicture,
+            status: backendUser.about,
+          });
+          console.log("✅ Zustand stored user:", backendUser.id);
 
-    // Optional: persist email/password for auto-login
-    if (!isWeb) {
-      await SecureStore.setItemAsync("email", email);
-      await SecureStore.setItemAsync("password", password);
-    } else {
-      localStorage.setItem("email", email);
-      localStorage.setItem("password", password);
-    }
-  } catch (err) {
-    console.error("❌ Login failed:", err);
-    throw err;
-  }
-},
+          // Optional: persist email/password for auto-login
+          if (!isWeb) {
+            await SecureStore.setItemAsync("email", email);
+            await SecureStore.setItemAsync("password", password);
+          } else {
+            localStorage.setItem("email", email);
+            localStorage.setItem("password", password);
+          }
+        } catch (err) {
+          console.error("❌ Login failed:", err);
+          throw err;
+        }
+      },
 
 
 

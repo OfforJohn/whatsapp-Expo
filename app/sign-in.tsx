@@ -4,6 +4,7 @@ import { useAuthStore } from "@/components/utils/authStore";
 import Toast from "react-native-toast-message";
 import { useRouter } from "expo-router";
 
+
 export default function SignInScreen() {
   const router = useRouter();
   const logIn = useAuthStore((state) => state.logIn);

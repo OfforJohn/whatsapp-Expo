@@ -32,6 +32,10 @@ export default function ChatScreen() {
 
   const currentUserIdRaw = useAuthStore((s) => s.backendId)?.toString();
 
+  const [contextTarget, setContextTarget] = useState<string | null>(null);
+const [deletingMessageIds, setDeletingMessageIds] = useState<string[]>([]);
+
+
 
 
   // -------------------------------------
@@ -64,7 +68,6 @@ export default function ChatScreen() {
         `${GET_MESSAGES_ROUTE}/${currentUserId}/${chatPartnerId}`
       );
 
-      console.log("Fetched messages:", data.messages);
 
       setMessages(data.messages.reverse());
     } catch (err) {
@@ -101,6 +104,41 @@ export default function ChatScreen() {
     flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
   }, [messages]);
 
+
+
+  const handleDeleteMessage = async (messageId: string) => {
+  if (!messageId) return;
+
+  // Immediately mark message as deleting for UI
+  setDeletingMessageIds((prev) => [...prev, messageId]);
+  setContextTarget(null);
+
+  try {
+    const res = await fetch(
+      `https://render-backend-ksnp.onrender.com/api/auth/deleteMessagesByUser/${messageId}`,
+      { method: "DELETE" }
+    );
+    const data = await res.json();
+
+    if (data.status) {
+      // Remove message from local state immediately
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
+
+      // Optional: refresh messages in background to sync with server
+      const response = await axios.get(
+        `${GET_MESSAGES_ROUTE}/${currentUserId}/${chatPartnerId}`
+      );
+      setMessages(response.data.messages.reverse());
+    }
+  } catch (err) {
+    console.error("Failed to delete message:", err);
+  } finally {
+    // Remove from deleting list
+    setDeletingMessageIds((prev) => prev.filter((id) => id !== messageId));
+  }
+};
+
+
   return (
     <SafeAreaView style={styles.safe}>
       {/* Header */}
@@ -130,16 +168,28 @@ export default function ChatScreen() {
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
       >
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          inverted
-          renderItem={({ item }) => (
-            <MessageBubble message={item} currentUserId={currentUserId} />
-          )}
-          keyExtractor={(item) => item.id.toString()}
-          contentContainerStyle={{ padding: 10 }}
-        />
+      <FlatList
+  ref={flatListRef}
+  data={messages}
+  inverted
+  renderItem={({ item }) => (
+    <Pressable
+      onLongPress={() => setContextTarget(item.id)}
+      style={{ width: "100%" }}
+    >
+      <MessageBubble
+        message={item}
+        currentUserId={currentUserId}
+        showDelete={contextTarget === item.id}
+        deleting={deletingMessageIds.includes(item.id)}
+        onDelete={handleDeleteMessage}
+      />
+    </Pressable>
+  )}
+  keyExtractor={(item) => item.id.toString()}
+  contentContainerStyle={{ padding: 10 }}
+/>
+
 
         <View style={styles.inputWrapper}>
           <MessageBar onSend={sendMessage} />

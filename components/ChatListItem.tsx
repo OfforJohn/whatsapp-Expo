@@ -1,8 +1,18 @@
 import { View, Text, StyleSheet, Image, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
+import MessageStatus from "./MessageStatus";
+
+import { useAuthStore } from "@/components/utils/authStore";
+
+
+
 
 export default function ChatListItem({ chat }: { chat: any }) {
   const router = useRouter();
+
+
+
+  const backendUserId = useAuthStore((state) => state.backendId);
 
   // Debug log
 
@@ -21,11 +31,7 @@ export default function ChatListItem({ chat }: { chat: any }) {
       },
     });
 
-    console.log("ChatListItem - navigating with params:", {
-      chatId: chat.id,
-      chatName: chat.name,
-      chatAvatar: chat.avatar,
-    });
+   
   };
 
   return (
@@ -36,13 +42,25 @@ export default function ChatListItem({ chat }: { chat: any }) {
         style={styles.avatar}
       />
 
-      {/* Middle section */}
-      <View style={styles.middle}>
-        <Text style={styles.name}>{chat.name}</Text>
+{/* Middle section */}
+<View style={styles.middle}>
+  <Text style={styles.name}>{chat.name}</Text>
+
+  <View style={styles.lastMessageContainer}>
+
+
+    {chat.lastMessageSenderId === backendUserId && (
+      <MessageStatus messageStatus={chat.lastMessageStatus}   />
+    )}
+
+
         <Text numberOfLines={1} style={styles.lastMessage}>
-          {chat.lastMessage || "No messages yet"}
-        </Text>
-      </View>
+      {chat.lastMessage || "No messages yet"}
+    </Text>
+  </View>
+</View>
+
+
 
       {/* Right section */}
       <View style={styles.right}>
@@ -104,6 +122,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginBottom: 4,
   },
+
+
+  lastMessageContainer: {
+  flexDirection: "row",
+  alignItems: "center",
+  marginTop: 2,
+},
 
   unreadBadge: {
     minWidth: 22,
